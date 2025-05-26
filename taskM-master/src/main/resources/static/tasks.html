@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Tareas - Sistema Distribuido</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .task-card {
+            transition: all 0.3s ease;
+            margin-bottom: 15px;
+        }
+        .task-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .status-badge {
+            font-size: 0.8rem;
+            padding: 5px 10px;
+        }
+        .status-pendiente {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .status-procesando {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .status-completada {
+            background-color: #28a745;
+            color: white;
+        }
+        .status-fallida {
+            background-color: #dc3545;
+            color: white;
+        }
+        .task-actions {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        #loading-spinner {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .stats-container {
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            text-align: center;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+        <a class="navbar-brand" href="/">Sistema Distribuido de Tareas</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="/">Inicio</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link active" href="/tasks.html">Tareas</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/nodes.html">Nodos</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/monitor.html">Monitor</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- Contenido Principal -->
+<div class="container mt-4">
+    <div class="task-header">
+        <h2><i class="fas fa-tasks"></i> Gestión de Tareas</h2>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createTaskModal">
+            <i class="fas fa-plus"></i> Nueva Tarea
+        </button>
+    </div>
+
+    <!-- Estadísticas de Tareas -->
+    <div class="stats-container row">
+        <div class="col-md-3 mb-3">
+            <div class="stat-card bg-warning text-dark">
+                <div class="stat-value" id="pendingTasksCount">0</div>
+                <div class="stat-label">Pendientes</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stat-card bg-info text-white">
+                <div class="stat-value" id="processingTasksCount">0</div>
+                <div class="stat-label">Procesando</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stat-card bg-success text-white">
+                <div class="stat-value" id="completedTasksCount">0</div>
+                <div class="stat-label">Completadas</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stat-card bg-danger text-white">
+                <div class="stat-value" id="failedTasksCount">0</div>
+                <div class="stat-label">Fallidas</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros de búsqueda -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Filtros</h5>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <select id="statusFilter" class="form-select">
+                        <option value="">Todos los estados</option>
+                        <option value="pendiente">Pendiente</option>
+                        <option value="procesando">Procesando</option>
+                        <option value="completada">Completada</option>
+                        <option value="fallida">Fallida</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" id="searchTask" class="form-control" placeholder="Buscar por nombre...">
+                </div>
+                <div class="col-md-4">
+                    <button id="applyFilters" class="btn btn-outline-primary w-100">Aplicar Filtros</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Spinner de carga -->
+    <div id="loading-spinner">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p>Cargando tareas...</p>
+    </div>
+
+    <!-- Listado de Tareas -->
+    <div id="tasksList" class="row">
+        <!-- Las tareas se cargarán dinámicamente aquí -->
+    </div>
+
+    <!-- Mensaje de no tareas -->
+    <div id="noTasksMessage" class="alert alert-info text-center" style="display: none;">
+        No hay tareas disponibles. ¡Crea una nueva tarea!
+    </div>
+</div>
+
+<!-- Modal para Crear Tarea -->
+<div class="modal fade" id="createTaskModal" tabindex="-1" aria-labelledby="createTaskModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createTaskModalLabel">Nueva Tarea</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createTaskForm">
+                    <div class="mb-3">
+                        <label for="taskName" class="form-label">Nombre de la Tarea</label>
+                        <input type="text" class="form-control" id="taskName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="taskDescription" class="form-label">Descripción</label>
+                        <textarea class="form-control" id="taskDescription" rows="3" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="submitTask">Crear Tarea</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Asignar Tarea -->
+<div class="modal fade" id="assignTaskModal" tabindex="-1" aria-labelledby="assignTaskModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="assignTaskModalLabel">Asignar Tarea a Nodo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="selectedTask" class="form-label">Tarea</label>
+                    <input type="text" class="form-control" id="selectedTask" readonly>
+                </div>
+                <div class="mb-3">
+                    <label for="nodeSelect" class="form-label">Seleccionar Nodo</label>
+                    <select class="form-select" id="nodeSelect" required>
+                        <option value="">Seleccione un nodo...</option>
+                    </select>
+                </div>
+                <div id="noActiveNodes" class="alert alert-warning" style="display: none;">
+                    No hay nodos activos disponibles para asignar la tarea.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="confirmAssignment">Asignar Tarea</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Detalles de Tarea -->
+<div class="modal fade" id="taskDetailsModal" tabindex="-1" aria-labelledby="taskDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="taskDetailsModalLabel">Detalles de la Tarea</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="taskDetailsContent">
+                <!-- Los detalles se cargarán aquí -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Footer -->
+<footer class="bg-light text-center text-lg-start mt-5">
+    <div class="text-center p-3" style="background-color: rgba(0, 0, 0, 0.05);">
+        © 2025 Sistema Distribuido de Gestión de Tareas
+    </div>
+</footer>
+
+<!-- Bootstrap JS y Dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- JavaScript para la funcionalidad de la página -->
+<script>
+    // Variables globales
+    let tasks = [];
+    let nodes = [];
+    let currentTaskForAssignment = null;
+    const tasksList = document.getElementById('tasksList');
+    const noTasksMessage = document.getElementById('noTasksMessage');
+    const loadingSpinner = document.getElementById('loading-spinner');
+
+    // Actualizar contador de estadísticas
+    function updateStats() {
+        const pendingTasks = tasks.filter(task => task.status === 'pendiente').length;
+        const processingTasks = tasks.filter(task => task.status === 'procesando').length;
+        const completedTasks = tasks.filter(task => task.status === 'completada').length;
+        const failedTasks = tasks.filter(task => task.status === 'fallida').length;
+
+        document.getElementById('pendingTasksCount').textContent = pendingTasks;
+        document.getElementById('processingTasksCount').textContent = processingTasks;
+        document.getElementById('completedTasksCount').textContent = completedTasks;
+        document.getElementById('failedTasksCount').textContent = failedTasks;
+    }
+
+    // Función para cargar las tareas
+    async function loadTasks() {
+        try {
+            showLoading(true);
+            const response = await fetch('/tasks');
+            const data = await response.json();
+            tasks = data;
+            renderTasks(tasks);
+            updateStats();
+            showLoading(false);
+        } catch (error) {
+            console.error('Error al cargar las tareas:', error);
+            showLoading(false);
+            alert('Error al cargar las tareas. Por favor, intente de nuevo.');
+        }
+    }
+
+    // Función para cargar los nodos
+    async function loadNodes() {
+        try {
+            const response = await fetch('/nodes/status');
+            const data = await response.json();
+            nodes = data;
+        } catch (error) {
+            console.error('Error al cargar los nodos:', error);
+            nodes = [];
+        }
+    }
+
+    // Mostrar/ocultar spinner de carga
+    function showLoading(show) {
+        loadingSpinner.style.display = show ? 'block' : 'none';
+    }
+
+    // Función para renderizar las tareas
+    function renderTasks(tasksToRender) {
+        tasksList.innerHTML = '';
+
+        if (tasksToRender.length === 0) {
+            noTasksMessage.style.display = 'block';
+            return;
+        }
+
+        noTasksMessage.style.display = 'none';
+
+        tasksToRender.forEach(task => {
+            const taskCard = document.createElement('div');
+            taskCard.className = 'col-md-6 col-lg-4';
+
+            // Botones de acción según el estado de la tarea
+            let actionButtons = `
+                <button class="btn btn-sm btn-info" onclick="viewTaskDetails(${task.id})">
+                    <i class="fas fa-eye"></i> Ver
+                </button>
+            `;
+
+            // Agregar botón de asignar solo si la tarea está pendiente o no tiene nodo asignado
+            if (task.status === 'pendiente' || !task.responsibleNode) {
+                actionButtons += `
+                    <button class="btn btn-sm btn-success" onclick="showAssignModal(${task.id}, '${task.name}')">
+                        <i class="fas fa-user-plus"></i> Asignar
+                    </button>
+                `;
+            }
+
+            actionButtons += `
+                <button class="btn btn-sm btn-danger" onclick="deleteTask(${task.id})">
+                    <i class="fas fa-trash"></i> Eliminar
+                </button>
+            `;
+
+            taskCard.innerHTML = `
+                <div class="card task-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">${task.name}</h5>
+                        <span class="badge status-badge status-${task.status}">${task.status}</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">${task.description ? task.description.substring(0, 100) + (task.description.length > 100 ? '...' : '') : 'Sin descripción'}</p>
+                        ${task.responsibleNode ? `<p class="text-muted"><small><i class="fas fa-server"></i> Nodo: ${task.responsibleNode}</small></p>` : '<p class="text-muted"><small><i class="fas fa-exclamation-triangle"></i> Sin nodo asignado</small></p>'}
+                    </div>
+                    <div class="card-footer">
+                        <div class="task-actions">
+                            ${actionButtons}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            tasksList.appendChild(taskCard);
+        });
+    }
+
+    // Mostrar el modal de asignación
+    async function showAssignModal(taskId, taskName) {
+        currentTaskForAssignment = taskId;
+        document.getElementById('selectedTask').value = taskName;
+
+        // Cargar nodos activos
+        await loadNodes();
+        const activeNodes = nodes.filter(node => node.status === 'activo');
+
+        const nodeSelect = document.getElementById('nodeSelect');
+        const noActiveNodes = document.getElementById('noActiveNodes');
+        const confirmButton = document.getElementById('confirmAssignment');
+
+        nodeSelect.innerHTML = '<option value="">Seleccione un nodo...</option>';
+
+        if (activeNodes.length === 0) {
+            noActiveNodes.style.display = 'block';
+            confirmButton.disabled = true;
+        } else {
+            noActiveNodes.style.display = 'none';
+            confirmButton.disabled = false;
+
+            activeNodes.forEach(node => {
+                const option = document.createElement('option');
+                option.value = node.nodeId;
+                option.textContent = `${node.nodeId} (ID: ${node.id})`;
+                nodeSelect.appendChild(option);
+            });
+        }
+
+        const assignTaskModal = new bootstrap.Modal(document.getElementById('assignTaskModal'));
+        assignTaskModal.show();
+    }
+
+    // Confirmar asignación de tarea
+    document.getElementById('confirmAssignment').addEventListener('click', async () => {
+        const selectedNodeId = document.getElementById('nodeSelect').value;
+
+        if (!selectedNodeId || !currentTaskForAssignment) {
+            alert('Por favor, seleccione un nodo.');
+            return;
+        }
+
+        try {
+            showLoading(true);
+            const response = await fetch(`/tasks/${currentTaskForAssignment}/assign/${selectedNodeId}`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) throw new Error('Error al asignar la tarea');
+
+            // Cerrar el modal
+            const assignTaskModal = bootstrap.Modal.getInstance(document.getElementById('assignTaskModal'));
+            assignTaskModal.hide();
+
+            // Recargar la lista de tareas
+            await loadTasks();
+            showLoading(false);
+            alert(`Tarea asignada correctamente al nodo ${selectedNodeId}.`);
+
+            currentTaskForAssignment = null;
+        } catch (error) {
+            console.error('Error al asignar la tarea:', error);
+            showLoading(false);
+            alert('Error al asignar la tarea al nodo.');
+        }
+    });
+
+    // Ver detalles de una tarea
+    async function viewTaskDetails(taskId) {
+        try {
+            showLoading(true);
+            const response = await fetch(`/tasks/${taskId}`);
+            const task = await response.json();
+
+            const detailsContent = document.getElementById('taskDetailsContent');
+            detailsContent.innerHTML = `
+                <div class="mb-3">
+                    <h4>${task.name}</h4>
+                    <span class="badge status-badge status-${task.status}">${task.status}</span>
+                </div>
+                <div class="mb-3">
+                    <h6>Descripción:</h6>
+                    <p>${task.description || 'Sin descripción'}</p>
+                </div>
+                <div class="mb-3">
+                    <h6>Detalles:</h6>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>ID</span>
+                            <span>${task.id}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>Estado</span>
+                            <span class="badge status-badge status-${task.status}">${task.status}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>Nodo responsable</span>
+                            <span>${task.responsibleNode ? `<i class="fas fa-server"></i> ${task.responsibleNode}` : '<span class="text-muted">No asignado</span>'}</span>
+                        </li>
+                    </ul>
+                </div>
+            `;
+
+            const taskDetailsModal = new bootstrap.Modal(document.getElementById('taskDetailsModal'));
+            taskDetailsModal.show();
+            showLoading(false);
+        } catch (error) {
+            console.error('Error al cargar los detalles de la tarea:', error);
+            showLoading(false);
+            alert('Error al cargar los detalles de la tarea.');
+        }
+    }
+
+    // Eliminar una tarea
+    async function deleteTask(taskId) {
+        if (confirm('¿Está seguro de que desea eliminar esta tarea?')) {
+            try {
+                showLoading(true);
+                await fetch(`/tasks/${taskId}`, {
+                    method: 'DELETE'
+                });
+
+                // Recargar la lista de tareas
+                await loadTasks();
+                showLoading(false);
+                alert('Tarea eliminada correctamente.');
+            } catch (error) {
+                console.error('Error al eliminar la tarea:', error);
+                showLoading(false);
+                alert('Error al eliminar la tarea.');
+            }
+        }
+    }
+
+    // Aplicar filtros
+    document.getElementById('applyFilters').addEventListener('click', () => {
+        const statusFilter = document.getElementById('statusFilter').value;
+        const searchQuery = document.getElementById('searchTask').value.toLowerCase();
+
+        let filteredTasks = tasks;
+
+        if (statusFilter) {
+            filteredTasks = filteredTasks.filter(task => task.status === statusFilter);
+        }
+
+        if (searchQuery) {
+            filteredTasks = filteredTasks.filter(task =>
+                task.name.toLowerCase().includes(searchQuery) ||
+                (task.description && task.description.toLowerCase().includes(searchQuery))
+            );
+        }
+
+        renderTasks(filteredTasks);
+    });
+
+    // Crear una nueva tarea
+    document.getElementById('submitTask').addEventListener('click', async () => {
+        const name = document.getElementById('taskName').value;
+        const description = document.getElementById('taskDescription').value;
+
+        if (!name || !description) {
+            alert('Por favor, complete todos los campos.');
+            return;
+        }
+
+        try {
+            showLoading(true);
+            const response = await fetch('/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name,
+                    description,
+                    status: 'pendiente'
+                })
+            });
+
+            const createdTask = await response.json();
+
+            // Cerrar el modal
+            const createTaskModal = bootstrap.Modal.getInstance(document.getElementById('createTaskModal'));
+            createTaskModal.hide();
+
+            // Limpiar el formulario
+            document.getElementById('createTaskForm').reset();
+
+            // Recargar la lista de tareas
+            await loadTasks();
+            showLoading(false);
+            alert('Tarea creada correctamente.');
+        } catch (error) {
+            console.error('Error al crear la tarea:', error);
+            showLoading(false);
+            alert('Error al crear la tarea.');
+        }
+    });
+
+    // Programar actualización automática de tareas cada 15 segundos
+    setInterval(loadTasks, 15000);
+
+    // Cargar las tareas al cargar la página
+    document.addEventListener('DOMContentLoaded', () => {
+        loadTasks();
+        loadNodes();
+    });
+</script>
+</body>
+</html>

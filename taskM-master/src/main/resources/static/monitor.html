@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor del Sistema - Sistema Distribuido</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Chart.js para gráficos -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        .metric-card {
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        .metric-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            text-transform: uppercase;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-active {
+            background-color: #28a745;
+        }
+        .status-inactive {
+            background-color: #dc3545;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+        .refresh-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .system-alert {
+            border-left: 4px solid #dc3545;
+        }
+        .node-card {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #fff;
+        }
+        .last-heartbeat {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .auto-refresh-controls {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+        <a class="navbar-brand" href="/">Sistema Distribuido de Tareas</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="/">Inicio</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/tasks.html">Tareas</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/nodes.html">Nodos</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link active" href="/monitor.html">Monitor</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- Contenido Principal -->
+<div class="container mt-4">
+    <!-- Header del Monitor -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-chart-line"></i> Monitor del Sistema</h2>
+        <div class="d-flex align-items-center">
+            <span class="badge bg-success me-2" id="systemStatus">Sistema Operativo</span>
+            <small class="text-muted" id="lastUpdate">Última actualización: --</small>
+        </div>
+    </div>
+
+    <!-- Controles de Auto-Refresh -->
+    <div class="auto-refresh-controls">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="autoRefreshToggle" checked>
+                    <label class="form-check-label" for="autoRefreshToggle">
+                        Actualización automática cada 5 segundos
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <button class="btn btn-outline-primary btn-sm" id="manualRefresh">
+                    <i class="fas fa-sync-alt"></i> Actualizar Ahora
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Métricas Generales -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card metric-card text-center">
+                <div class="card-body">
+                    <div class="metric-value" id="totalTasks">0</div>
+                    <div class="metric-label">Total Tareas</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card metric-card text-center">
+                <div class="card-body">
+                    <div class="metric-value" id="activeTasks">0</div>
+                    <div class="metric-label">Tareas Activas</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card metric-card text-center">
+                <div class="card-body">
+                    <div class="metric-value" id="totalNodes">0</div>
+                    <div class="metric-label">Total Nodos</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card metric-card text-center">
+                <div class="card-body">
+                    <div class="metric-value" id="activeNodes">0</div>
+                    <div class="metric-label">Nodos Activos</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos y Estado del Sistema -->
+    <div class="row">
+        <!-- Distribución de Tareas -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-chart-pie"></i> Distribución de Tareas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="tasksChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Estado de Nodos -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-server"></i> Estado de Nodos</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="nodesChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detalles de Nodos -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-network-wired"></i> Estado Detallado de Nodos</h5>
+                </div>
+                <div class="card-body" id="nodeDetails">
+                    <!-- Los detalles de nodos se cargarán aquí -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertas del Sistema -->
+    <div class="row mt-4" id="systemAlertsSection" style="display: none;">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Alertas del Sistema</h5>
+                </div>
+                <div class="card-body" id="systemAlerts">
+                    <!-- Las alertas se cargarán aquí -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Botón de Refresh Flotante -->
+<button class="btn btn-primary btn-lg rounded-circle refresh-btn" id="floatingRefresh" title="Actualizar datos">
+    <i class="fas fa-sync-alt"></i>
+</button>
+
+<!-- Footer -->
+<footer class="bg-light text-center text-lg-start mt-5">
+    <div class="text-center p-3" style="background-color: rgba(0, 0, 0, 0.05);">
+        © 2025 Sistema Distribuido de Gestión de Tareas
+    </div>
+</footer>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- JavaScript para la funcionalidad del monitor -->
+<script>
+    // Variables globales
+    let tasksChart, nodesChart;
+    let autoRefreshInterval;
+    let systemData = {
+        tasks: [],
+        nodes: [],
+        alerts: []
+    };
+
+    // Inicializar el monitor
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeCharts();
+        loadSystemData();
+        setupAutoRefresh();
+        setupEventListeners();
+    });
+
+    // Configurar event listeners
+    function setupEventListeners() {
+        document.getElementById('autoRefreshToggle').addEventListener('change', function() {
+            if (this.checked) {
+                startAutoRefresh();
+            } else {
+                stopAutoRefresh();
+            }
+        });
+
+        document.getElementById('manualRefresh').addEventListener('click', loadSystemData);
+        document.getElementById('floatingRefresh').addEventListener('click', loadSystemData);
+    }
+
+    // Inicializar gráficos
+    function initializeCharts() {
+        // Gráfico de distribución de tareas
+        const tasksCtx = document.getElementById('tasksChart').getContext('2d');
+        tasksChart = new Chart(tasksCtx, {
+            type: 'pie',
+            data: {
+                labels: ['Pendiente', 'Procesando', 'Completada', 'Fallida'],
+                datasets: [{
+                    data: [0, 0, 0, 0],
+                    backgroundColor: ['#ffc107', '#17a2b8', '#28a745', '#dc3545'],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+
+        // Gráfico de estado de nodos
+        const nodesCtx = document.getElementById('nodesChart').getContext('2d');
+        nodesChart = new Chart(nodesCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Activos', 'Inactivos'],
+                datasets: [{
+                    data: [0, 0],
+                    backgroundColor: ['#28a745', '#dc3545'],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+
+    // Cargar datos del sistema
+    async function loadSystemData() {
+        try {
+            // Cargar tareas y nodos en paralelo
+            const [tasksResponse, nodesResponse] = await Promise.all([
+                fetch('/tasks'),
+                fetch('/nodes/status')
+            ]);
+
+            systemData.tasks = await tasksResponse.json();
+            systemData.nodes = await nodesResponse.json();
+
+            updateMetrics();
+            updateCharts();
+            updateNodeDetails();
+            checkSystemAlerts();
+            updateLastUpdateTime();
+
+        } catch (error) {
+            console.error('Error al cargar datos del sistema:', error);
+            showSystemAlert('Error al cargar datos del sistema', 'danger');
+        }
+    }
+
+    // Actualizar métricas generales
+    function updateMetrics() {
+        // Métricas de tareas
+        const totalTasks = systemData.tasks.length;
+        const activeTasks = systemData.tasks.filter(task =>
+            task.status === 'procesando' || task.status === 'pendiente'
+        ).length;
+
+        // Métricas de nodos
+        const totalNodes = systemData.nodes.length;
+        const activeNodes = systemData.nodes.filter(node => node.status === 'activo').length;
+
+        // Actualizar elementos del DOM
+        document.getElementById('totalTasks').textContent = totalTasks;
+        document.getElementById('activeTasks').textContent = activeTasks;
+        document.getElementById('totalNodes').textContent = totalNodes;
+        document.getElementById('activeNodes').textContent = activeNodes;
+
+        // Actualizar estado del sistema
+        const systemStatus = activeNodes > 0 ? 'Sistema Operativo' : 'Sistema Crítico';
+        const statusClass = activeNodes > 0 ? 'bg-success' : 'bg-danger';
+        const statusElement = document.getElementById('systemStatus');
+        statusElement.textContent = systemStatus;
+        statusElement.className = `badge ${statusClass} me-2`;
+    }
+
+    // Actualizar gráficos
+    function updateCharts() {
+        // Actualizar gráfico de tareas
+        const taskCounts = {
+            pendiente: 0,
+            procesando: 0,
+            completada: 0,
+            fallida: 0
+        };
+
+        systemData.tasks.forEach(task => {
+            if (taskCounts.hasOwnProperty(task.status)) {
+                taskCounts[task.status]++;
+            }
+        });
+
+        tasksChart.data.datasets[0].data = [
+            taskCounts.pendiente,
+            taskCounts.procesando,
+            taskCounts.completada,
+            taskCounts.fallida
+        ];
+        tasksChart.update();
+
+        // Actualizar gráfico de nodos
+        const activeNodes = systemData.nodes.filter(node => node.status === 'activo').length;
+        const inactiveNodes = systemData.nodes.length - activeNodes;
+
+        nodesChart.data.datasets[0].data = [activeNodes, inactiveNodes];
+        nodesChart.update();
+    }
+
+    // Actualizar detalles de nodos
+    function updateNodeDetails() {
+        const nodeDetailsContainer = document.getElementById('nodeDetails');
+        nodeDetailsContainer.innerHTML = '';
+
+        if (systemData.nodes.length === 0) {
+            nodeDetailsContainer.innerHTML = '<p class="text-muted">No hay nodos registrados en el sistema.</p>';
+            return;
+        }
+
+        systemData.nodes.forEach(node => {
+            const isActive = node.status === 'activo';
+            const lastHeartbeat = node.lastHeartbeat ?
+                new Date(node.lastHeartbeat).toLocaleString() : 'Nunca';
+            const timeSinceHeartbeat = node.lastHeartbeat ?
+                Math.floor((Date.now() - node.lastHeartbeat) / 1000) : 0;
+
+            const nodeCard = document.createElement('div');
+            nodeCard.className = 'node-card';
+            nodeCard.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">
+                            <span class="status-indicator ${isActive ? 'status-active' : 'status-inactive'}"></span>
+                            Nodo: ${node.nodeId}
+                        </h6>
+                        <p class="mb-0">
+                            Estado: <span class="badge ${isActive ? 'bg-success' : 'bg-danger'}">${node.status}</span>
+                        </p>
+                        <div class="last-heartbeat">
+                            Último heartbeat: ${lastHeartbeat}
+                            ${timeSinceHeartbeat > 0 ? `(hace ${timeSinceHeartbeat}s)` : ''}
+                        </div>
+                    </div>
+                    <div class="text-end">
+                        <small class="text-muted">ID: ${node.id}</small>
+                    </div>
+                </div>
+            `;
+            nodeDetailsContainer.appendChild(nodeCard);
+        });
+    }
+
+    // Verificar alertas del sistema
+    function checkSystemAlerts() {
+        systemData.alerts = [];
+
+        // Verificar nodos inactivos
+        const inactiveNodes = systemData.nodes.filter(node => node.status === 'inactivo');
+        if (inactiveNodes.length > 0) {
+            systemData.alerts.push({
+                type: 'warning',
+                message: `${inactiveNodes.length} nodo(s) inactivo(s) detectado(s)`,
+                details: inactiveNodes.map(node => node.nodeId).join(', ')
+            });
+        }
+
+        // Verificar tareas fallidas
+        const failedTasks = systemData.tasks.filter(task => task.status === 'fallida');
+        if (failedTasks.length > 0) {
+            systemData.alerts.push({
+                type: 'danger',
+                message: `${failedTasks.length} tarea(s) fallida(s)`,
+                details: failedTasks.map(task => task.name).join(', ')
+            });
+        }
+
+        // Verificar si no hay nodos activos
+        const activeNodes = systemData.nodes.filter(node => node.status === 'activo');
+        if (activeNodes.length === 0 && systemData.nodes.length > 0) {
+       // console.log(activeNodes);
+            systemData.alerts.push({
+                type: 'danger',
+                message: 'No hay nodos activos en el sistema',
+                details: 'El sistema no puede procesar tareas'
+            });
+        }
+
+        updateSystemAlerts();
+    }
+
+    // Actualizar alertas del sistema
+    function updateSystemAlerts() {
+        const alertsSection = document.getElementById('systemAlertsSection');
+        const alertsContainer = document.getElementById('systemAlerts');
+
+        if (systemData.alerts.length === 0) {
+            alertsSection.style.display = 'none';
+            return;
+        }
+
+        alertsSection.style.display = 'block';
+        alertsContainer.innerHTML = '';
+
+        systemData.alerts.forEach(alert => {
+            const alertElement = document.createElement('div');
+            alertElement.className = `alert alert-${alert.type} system-alert`;
+            alertElement.innerHTML = `
+                <div class="d-flex">
+                    <div class="flex-grow-1">
+                        <strong>${alert.message}</strong>
+                        <br>
+                        <small>${alert.details}</small>
+                    </div>
+                    <div>
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                </div>
+            `;
+            alertsContainer.appendChild(alertElement);
+        });
+    }
+
+    // Mostrar alerta del sistema
+    function showSystemAlert(message, type = 'info') {
+        const alertElement = document.createElement('div');
+        alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+        alertElement.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.querySelector('.container').insertBefore(alertElement, document.querySelector('.container').firstChild);
+    }
+
+    // Actualizar tiempo de última actualización
+    function updateLastUpdateTime() {
+        const now = new Date();
+        document.getElementById('lastUpdate').textContent =
+            `Última actualización: ${now.toLocaleTimeString()}`;
+    }
+
+    // Configurar auto-refresh
+    function setupAutoRefresh() {
+        startAutoRefresh();
+    }
+
+    // Iniciar auto-refresh
+    function startAutoRefresh() {
+        stopAutoRefresh(); // Limpiar cualquier intervalo existente
+        autoRefreshInterval = setInterval(loadSystemData, 5000); // Cada 5 segundos
+    }
+
+    // Detener auto-refresh
+    function stopAutoRefresh() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+    }
+
+    // Limpiar recursos al salir de la página
+    window.addEventListener('beforeunload', function() {
+        stopAutoRefresh();
+    });
+</script>
+</body>
+</html>
